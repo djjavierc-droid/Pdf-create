@@ -1,24 +1,27 @@
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import React from "react";
-import { useColorScheme } from "react-native";
 
-import { useColors } from "@/hooks/useColors";
+const PRIMARY = "#7c3aed";
+const INACTIVE = "#6b7280";
+const BG = "#0d0b1e";
+const BORDER = "#1e1b35";
 
 export default function TabLayout() {
-  const colors = useColors();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
+        tabBarActiveTintColor: PRIMARY,
+        tabBarInactiveTintColor: INACTIVE,
         tabBarStyle: {
-          backgroundColor: colors.card,
+          backgroundColor: BG,
+          borderTopColor: BORDER,
           borderTopWidth: 1,
-          borderTopColor: colors.border,
-          elevation: 0,
+          height: 60,
+          paddingBottom: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
         },
       }}
     >
