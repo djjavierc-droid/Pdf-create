@@ -40,17 +40,34 @@ jobs:
         working-directory: artifacts/pdf-tools-mobile
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Create signing keystore
+        run: |
+          keytool -genkeypair \
+            -keystore /tmp/release.keystore \
+            -alias pdftools \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass pdftools123 -keypass pdftools123 \
+            -dname "CN=Javier Soto, O=PDF Tools, C=CO"
+
+      - name: Configure release signing
+        working-directory: artifacts/pdf-tools-mobile/android
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=/tmp/release.keystore" >> gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=pdftools123" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=pdftools" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=pdftools123" >> gradle.properties
+
       - name: Make Gradlew executable
         working-directory: artifacts/pdf-tools-mobile/android
         run: chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: artifacts/pdf-tools-mobile/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PDF-Tools-APK
-          path: artifacts/pdf-tools-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: artifacts/pdf-tools-mobile/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
