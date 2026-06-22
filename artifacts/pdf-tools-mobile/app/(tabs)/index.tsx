@@ -173,7 +173,14 @@ export default function ConverterScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item, index }) => (
             <View style={styles.imageCard}>
-              <Image source={{ uri: item.uri }} style={styles.thumb} />
+              <Image
+                source={{
+                  uri: item.base64
+                    ? `data:image/jpeg;base64,${item.base64}`
+                    : item.uri,
+                }}
+                style={styles.thumb}
+              />
               <View style={styles.cardInfo}>
                 <Text style={styles.cardPage}>Página {index + 1}</Text>
                 <View style={styles.cardActions}>
