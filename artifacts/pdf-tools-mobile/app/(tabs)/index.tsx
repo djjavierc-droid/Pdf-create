@@ -8,8 +8,8 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -17,29 +17,34 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useColors } from "@/hooks/useColors";
+const C = {
+  bg: "#0d0b1e",
+  surface: "#13112a",
+  card: "#1a1738",
+  border: "#2a2550",
+  primary: "#7c3aed",
+  primaryLight: "#9f67fa",
+  text: "#f0eeff",
+  muted: "#8b85a8",
+  success: "#10b981",
+  error: "#ef4444",
+  white: "#ffffff",
+};
 
-interface SelectedImage {
+interface Img {
   id: string;
   uri: string;
   base64: string | null | undefined;
-  width: number;
-  height: number;
 }
 
-type ConvertState = "idle" | "converting" | "done" | "error";
+type State = "idle" | "converting" | "done" | "error";
 
 export default function ConverterScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [images, setImages] = useState<SelectedImage[]>([]);
-  const [state, setState] = useState<ConvertState>("idle");
+  const [images, setImages] = useState<Img[]>([]);
+  const [state, setState] = useState<State>("idle");
   const [pdfUri, setPdfUri] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string>("");
-
-  const isWeb = Platform.OS === "web";
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : insets.bottom;
+  const [errorMsg, setErrorMsg] = useState("");
 
   async function pickImages() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -55,47 +60,36 @@ export default function ConverterScreen() {
       base64: true,
     });
     if (!result.canceled && result.assets.length > 0) {
-      const newImages: SelectedImage[] = result.assets.map((asset) => ({
-        id: Date.now().toString() + Math.random().toString(36).slice(2, 9),
-        uri: asset.uri,
-        base64: asset.base64,
-        width: asset.width,
-        height: asset.height,
+      const newImgs: Img[] = result.assets.map((a) => ({
+        id: Math.random().toString(36).slice(2),
+        uri: a.uri,
+        base64: a.base64,
       }));
-      setImages((prev) => [...prev, ...newImages]);
+      setImages((p) => [...p, ...newImgs]);
       setPdfUri(null);
       setState("idle");
     }
   }
 
-  function removeImage(id: string) {
+  function remove(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setImages((prev) => prev.filter((img) => img.id !== id));
+    setImages((p) => p.filter((i) => i.id !== id));
     setPdfUri(null);
     setState("idle");
   }
 
-  function moveUp(index: number) {
-    if (index === 0) return;
+  function move(index: number, dir: -1 | 1) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setImages((prev) => {
-      const next = [...prev];
-      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    setImages((p) => {
+      const next = [...p];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return p;
+      [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
   }
 
-  function moveDown(index: number) {
-    if (index === images.length - 1) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setImages((prev) => {
-      const next = [...prev];
-      [next[index], next[index + 1]] = [next[index + 1], next[index]];
-      return next;
-    });
-  }
-
-  async function convertToPdf() {
+  async function convert() {
     if (images.length === 0) return;
     setState("converting");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -105,29 +99,18 @@ export default function ConverterScreen() {
           const src = img.base64
             ? `data:image/jpeg;base64,${img.base64}`
             : img.uri;
-          return `<div style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;page-break-after:always;margin:0;padding:0;">
+          return `<div style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;page-break-after:always;background:#fff;margin:0;padding:0;">
             <img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;" />
           </div>`;
         })
         .join("");
 
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: white; }
-</style>
-</head>
-<body>${pages}</body>
-</html>`;
-
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#fff;}</style></head><body>${pages}</body></html>`;
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       setPdfUri(uri);
       setState("done");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
+    } catch {
       setErrorMsg("Error al convertir. Inténtalo de nuevo.");
       setState("error");
     }
@@ -150,325 +133,265 @@ export default function ConverterScreen() {
     setErrorMsg("");
   }
 
-  const styles = makeStyles(colors);
-
   return (
-    <View style={[styles.container, { paddingTop: topPad, paddingBottom: bottomPad }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Imágenes a PDF</Text>
-        <Text style={styles.subtitle}>
-          {images.length === 0
-            ? "Selecciona las imágenes que quieres convertir"
-            : `${images.length} imagen${images.length > 1 ? "es" : ""} seleccionada${images.length > 1 ? "s" : ""}`}
-        </Text>
+        <View style={styles.headerIcon}>
+          <Feather name="file-plus" size={20} color={C.primary} />
+        </View>
+        <View>
+          <Text style={styles.title}>Imágenes a PDF</Text>
+          <Text style={styles.subtitle}>
+            {images.length === 0
+              ? "Selecciona imágenes para convertir"
+              : `${images.length} imagen${images.length !== 1 ? "es" : ""} seleccionada${images.length !== 1 ? "s" : ""}`}
+          </Text>
+        </View>
       </View>
 
+      {/* Content */}
       {images.length === 0 ? (
         <Pressable
-          testID="button-pick-images"
-          style={({ pressed }) => [styles.dropZone, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.dropZone, pressed && { opacity: 0.75 }]}
           onPress={pickImages}
         >
-          <View style={styles.dropZoneIcon}>
-            <Feather name="upload-cloud" size={40} color={colors.primary} />
+          <View style={styles.dropIcon}>
+            <Feather name="image" size={36} color={C.primary} />
           </View>
-          <Text style={styles.dropZoneTitle}>Seleccionar imágenes</Text>
-          <Text style={styles.dropZoneSubtitle}>JPG, PNG, WebP, GIF</Text>
+          <Text style={styles.dropTitle}>Toca para seleccionar</Text>
+          <Text style={styles.dropSub}>JPG · PNG · WebP · GIF</Text>
+          <View style={styles.dropBtn}>
+            <Text style={styles.dropBtnText}>Abrir galería</Text>
+          </View>
         </Pressable>
       ) : (
         <FlatList
           data={images}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           renderItem={({ item, index }) => (
-            <View testID={`card-image-${item.id}`} style={styles.imageCard}>
-              <Image source={{ uri: item.uri }} style={styles.thumbnail} />
-              <View style={styles.imageInfo}>
-                <Text style={styles.imagePage}>Página {index + 1}</Text>
-                <View style={styles.imageActions}>
+            <View style={styles.imageCard}>
+              <Image source={{ uri: item.uri }} style={styles.thumb} />
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardPage}>Página {index + 1}</Text>
+                <View style={styles.cardActions}>
                   <TouchableOpacity
-                    testID={`button-moveup-${item.id}`}
-                    onPress={() => moveUp(index)}
-                    style={[styles.iconBtn, index === 0 && styles.iconBtnDisabled]}
+                    onPress={() => move(index, -1)}
                     disabled={index === 0}
+                    style={[styles.actionBtn, index === 0 && styles.actionBtnDim]}
                   >
-                    <Feather name="chevron-up" size={18} color={index === 0 ? colors.mutedForeground : colors.primary} />
+                    <Feather name="chevron-up" size={16} color={index === 0 ? C.muted : C.primaryLight} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    testID={`button-movedown-${item.id}`}
-                    onPress={() => moveDown(index)}
-                    style={[styles.iconBtn, index === images.length - 1 && styles.iconBtnDisabled]}
+                    onPress={() => move(index, 1)}
                     disabled={index === images.length - 1}
+                    style={[styles.actionBtn, index === images.length - 1 && styles.actionBtnDim]}
                   >
-                    <Feather name="chevron-down" size={18} color={index === images.length - 1 ? colors.mutedForeground : colors.primary} />
+                    <Feather name="chevron-down" size={16} color={index === images.length - 1 ? C.muted : C.primaryLight} />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    testID={`button-remove-${item.id}`}
-                    onPress={() => removeImage(item.id)}
-                    style={styles.iconBtn}
-                  >
-                    <Feather name="x" size={18} color={colors.destructive} />
+                  <TouchableOpacity onPress={() => remove(item.id)} style={styles.actionBtn}>
+                    <Feather name="trash-2" size={16} color={C.error} />
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
           )}
           ListFooterComponent={
-            <TouchableOpacity
-              testID="button-add-more"
-              style={styles.addMoreBtn}
-              onPress={pickImages}
-            >
-              <Feather name="plus" size={18} color={colors.primary} />
+            <TouchableOpacity style={styles.addMore} onPress={pickImages}>
+              <Feather name="plus-circle" size={16} color={C.primary} />
               <Text style={styles.addMoreText}>Agregar más imágenes</Text>
             </TouchableOpacity>
           }
         />
       )}
 
+      {/* Status banners */}
       {state === "error" && (
         <View style={styles.errorBanner}>
-          <Feather name="alert-circle" size={16} color={colors.destructiveForeground} />
-          <Text style={styles.errorText}>{errorMsg}</Text>
+          <Feather name="alert-circle" size={15} color={C.white} />
+          <Text style={styles.bannerText}>{errorMsg}</Text>
         </View>
       )}
-
       {state === "done" && (
-        <View testID="status-success" style={styles.successBanner}>
-          <Feather name="check-circle" size={16} color={colors.successForeground} />
-          <Text style={styles.successText}>PDF creado con éxito</Text>
+        <View style={styles.successBanner}>
+          <Feather name="check-circle" size={15} color={C.white} />
+          <Text style={styles.bannerText}>¡PDF creado exitosamente!</Text>
         </View>
       )}
 
-      <View style={styles.bottomActions}>
+      {/* Bottom actions */}
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + 70 }]}>
         {state === "done" ? (
           <View style={styles.doneRow}>
-            <TouchableOpacity
-              testID="button-download-pdf"
-              style={[styles.primaryBtn, { flex: 1 }]}
-              onPress={sharePdf}
-            >
-              <Feather name="download" size={18} color={colors.primaryForeground} />
-              <Text style={styles.primaryBtnText}>Descargar PDF</Text>
+            <TouchableOpacity style={[styles.mainBtn, { flex: 1 }]} onPress={sharePdf}>
+              <Feather name="download" size={18} color={C.white} />
+              <Text style={styles.mainBtnText}>Guardar / Compartir PDF</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              testID="button-reset"
-              style={styles.secondaryBtn}
-              onPress={reset}
-            >
-              <Feather name="refresh-cw" size={18} color={colors.primary} />
+            <TouchableOpacity style={styles.iconBtn} onPress={reset}>
+              <Feather name="refresh-cw" size={18} color={C.primary} />
             </TouchableOpacity>
           </View>
         ) : state === "converting" ? (
-          <View style={[styles.primaryBtn, styles.loadingBtn]}>
-            <ActivityIndicator color={colors.primaryForeground} size="small" />
-            <Text style={styles.primaryBtnText}>Convirtiendo...</Text>
+          <View style={[styles.mainBtn, { opacity: 0.8 }]}>
+            <ActivityIndicator color={C.white} size="small" />
+            <Text style={styles.mainBtnText}>Convirtiendo...</Text>
           </View>
-        ) : (
-          images.length > 0 && (
-            <TouchableOpacity
-              testID="button-convert"
-              style={[styles.primaryBtn, images.length === 0 && styles.primaryBtnDisabled]}
-              onPress={convertToPdf}
-              disabled={images.length === 0}
-            >
-              <Feather name="file-text" size={18} color={colors.primaryForeground} />
-              <Text style={styles.primaryBtnText}>Convertir a PDF</Text>
-            </TouchableOpacity>
-          )
-        )}
+        ) : images.length > 0 ? (
+          <TouchableOpacity style={styles.mainBtn} onPress={convert}>
+            <Feather name="file-text" size={18} color={C.white} />
+            <Text style={styles.mainBtnText}>Convertir a PDF</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      <Text testID="text-footer" style={styles.footer}>
+      <Text style={[styles.footer, { paddingBottom: insets.bottom + 68 }]}>
         Desarrollada por Javier Soto
       </Text>
     </View>
   );
 }
 
-function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useColors>) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    header: {
-      paddingHorizontal: 20,
-      paddingTop: 16,
-      paddingBottom: 12,
-    },
-    title: {
-      fontSize: 26,
-      color: colors.foreground,
-      marginBottom: 4,
-    },
-    subtitle: {
-      fontSize: 14,
-      color: colors.mutedForeground,
-    },
-    dropZone: {
-      margin: 20,
-      flex: 1,
-      borderWidth: 2,
-      borderColor: colors.primary,
-      borderStyle: "dashed",
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.secondary,
-      padding: 40,
-    },
-    dropZoneIcon: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 16,
-    },
-    dropZoneTitle: {
-      fontSize: 18,
-      color: colors.foreground,
-      marginBottom: 6,
-    },
-    dropZoneSubtitle: {
-      fontSize: 13,
-      color: colors.mutedForeground,
-    },
-    listContent: {
-      padding: 16,
-      gap: 12,
-    },
-    imageCard: {
-      flexDirection: "row",
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    thumbnail: {
-      width: 80,
-      height: 80,
-      resizeMode: "cover",
-    },
-    imageInfo: {
-      flex: 1,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      justifyContent: "space-between",
-    },
-    imagePage: {
-      fontSize: 15,
-      color: colors.foreground,
-    },
-    imageActions: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    iconBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: colors.muted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    iconBtnDisabled: {
-      opacity: 0.4,
-    },
-    addMoreBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 14,
-      gap: 8,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      borderRadius: 12,
-      borderStyle: "dashed",
-      marginTop: 4,
-    },
-    addMoreText: {
-      fontSize: 14,
-      color: colors.primary,
-    },
-    errorBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginHorizontal: 20,
-      marginBottom: 8,
-      padding: 12,
-      borderRadius: 10,
-      backgroundColor: colors.destructive,
-    },
-    errorText: {
-      fontSize: 13,
-      color: colors.destructiveForeground,
-      flex: 1,
-    },
-    successBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginHorizontal: 20,
-      marginBottom: 8,
-      padding: 12,
-      borderRadius: 10,
-      backgroundColor: colors.success,
-    },
-    successText: {
-      fontSize: 13,
-      color: colors.successForeground,
-      flex: 1,
-    },
-    bottomActions: {
-      paddingHorizontal: 20,
-      paddingTop: 8,
-      paddingBottom: 4,
-    },
-    doneRow: {
-      flexDirection: "row",
-      gap: 10,
-    },
-    primaryBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.primary,
-      borderRadius: 14,
-      paddingVertical: 16,
-      gap: 8,
-    },
-    primaryBtnDisabled: {
-      opacity: 0.5,
-    },
-    loadingBtn: {
-      opacity: 0.8,
-    },
-    primaryBtnText: {
-      fontSize: 16,
-      color: colors.primaryForeground,
-    },
-    secondaryBtn: {
-      width: 52,
-      height: 52,
-      borderRadius: 14,
-      backgroundColor: colors.secondary,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    footer: {
-      textAlign: "center",
-      fontSize: 12,
-      color: colors.mutedForeground,
-      paddingVertical: 10,
-    },
-    success: {
-      color: "#10b981",
-    },
-  });
-}
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: 18, fontWeight: "700", color: C.text },
+  subtitle: { fontSize: 13, color: C.muted, marginTop: 1 },
+  dropZone: {
+    flex: 1,
+    margin: 20,
+    borderWidth: 2,
+    borderColor: C.primary,
+    borderStyle: "dashed",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.surface,
+    gap: 12,
+  },
+  dropIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropTitle: { fontSize: 18, fontWeight: "600", color: C.text },
+  dropSub: { fontSize: 13, color: C.muted },
+  dropBtn: {
+    marginTop: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    backgroundColor: C.primary,
+    borderRadius: 14,
+  },
+  dropBtnText: { fontSize: 15, fontWeight: "600", color: C.white },
+  list: { padding: 16, gap: 10 },
+  imageCard: {
+    flexDirection: "row",
+    backgroundColor: C.card,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  thumb: { width: 80, height: 80, resizeMode: "cover" },
+  cardInfo: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: "space-between",
+  },
+  cardPage: { fontSize: 14, fontWeight: "600", color: C.text },
+  cardActions: { flexDirection: "row", gap: 8 },
+  actionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnDim: { opacity: 0.35 },
+  addMore: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  addMoreText: { fontSize: 14, color: C.primary },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: C.error,
+  },
+  successBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: C.success,
+  },
+  bannerText: { fontSize: 13, color: C.white, flex: 1 },
+  bottom: { paddingHorizontal: 16, paddingTop: 8 },
+  doneRow: { flexDirection: "row", gap: 10 },
+  mainBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.primary,
+    borderRadius: 16,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  mainBtnText: { fontSize: 16, fontWeight: "700", color: C.white },
+  iconBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  footer: {
+    textAlign: "center",
+    fontSize: 11,
+    color: C.muted,
+    paddingTop: 6,
+  },
+});
