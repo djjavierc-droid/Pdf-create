@@ -36,6 +36,17 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Convert viewer.html to TypeScript module
+        working-directory: artifacts/pdf-tools-mobile
+        run: |
+          node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('assets/pdfjs/viewer.html', 'utf8');
+          const out = '// Auto-generated — do not edit manually\nexport const VIEWER_HTML = ' + JSON.stringify(html) + ';\n';
+          fs.writeFileSync('assets/pdfjs/viewerHtml.ts', out);
+          console.log('viewerHtml.ts written, size:', out.length);
+          "
+
       - name: Generate native Android project
         working-directory: artifacts/pdf-tools-mobile
         run: npx expo prebuild --platform android --clean --no-install
@@ -63,7 +74,13 @@ jobs:
 
       - name: Build release APK
         working-directory: artifacts/pdf-tools-mobile/android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; exit ${PIPESTATUS[0]}
+
+      - name: Show Metro bundle errors if build failed
+        if: failure()
+        run: |
+          echo "=== GRADLE LOG TAIL ==="
+          grep -A 20 "createBundleReleaseJsAndAssets\|FAILED\|error\|Error" /tmp/gradle.log | tail -60 || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
