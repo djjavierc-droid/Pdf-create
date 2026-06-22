@@ -12,6 +12,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/cli": "54.0.23",
+    "babel-preset-expo": "~54.0.11",
     "@expo/vector-icons": "^15.0.3",
     "@types/react": "~19.1.10",
     "expo": "~54.0.27",
