@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "AkYpETQBxpOHfySD7BuEC"
+uri = "file://attached_assets/icon_generated.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "LhVEDKWfgnTbLIwE9gsRA"
+uri = "file://artifacts/pdf-tools-mobile/assets/images/icon.png"
+type = "image"
+title = "generated_image"

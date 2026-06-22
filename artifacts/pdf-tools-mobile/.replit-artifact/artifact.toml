@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/pdf-tools-mobile/"
+title = "PDF Tools Mobile"
+version = "1.0.0"
+id = "artifacts/pdf-tools-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/pdf-tools-mobile/" ]
+localPort = 19198
+
+[services.development]
+run = "pnpm --filter @workspace/pdf-tools-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pdf-tools-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/pdf-tools-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "19198"
+BASE_PATH = "/pdf-tools-mobile/"
