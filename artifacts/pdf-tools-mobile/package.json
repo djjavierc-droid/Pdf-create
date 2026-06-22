@@ -12,9 +12,9 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/cli": "54.0.23",
-    "babel-preset-expo": "~54.0.11",
     "@expo/vector-icons": "^15.0.3",
     "@types/react": "~19.1.10",
+    "babel-preset-expo": "~54.0.11",
     "expo": "~54.0.27",
     "expo-constants": "~18.0.11",
     "expo-font": "~14.0.10",
@@ -36,9 +36,9 @@
   },
   "dependencies": {
     "expo-document-picker": "^14.0.8",
-    "expo-file-system": "^19.0.23",
     "expo-print": "^15.0.8",
     "expo-sharing": "^14.0.8",
-    "react-native-webview": "^14.0.1"
+    "react-native-blob-util": "^0.21.1",
+    "react-native-pdf": "^6.7.7"
   }
 }
