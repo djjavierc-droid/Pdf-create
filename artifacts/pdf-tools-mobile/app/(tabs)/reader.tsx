@@ -3,7 +3,6 @@ import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -30,7 +29,6 @@ export default function ReaderScreen() {
   const [fileName, setFileName] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   async function pickPdf() {
@@ -46,7 +44,6 @@ export default function ReaderScreen() {
         setPage(1);
         setTotal(0);
         setErrorMsg("");
-        setLoading(true);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
     } catch {
@@ -59,7 +56,6 @@ export default function ReaderScreen() {
     setFileName("");
     setPage(1);
     setTotal(0);
-    setLoading(false);
     setErrorMsg("");
   }
 
@@ -101,7 +97,7 @@ export default function ReaderScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Error (only when no PDF loaded) */}
+      {/* Error banner (only when no PDF loaded) */}
       {!pdfUri && errorMsg !== "" && (
         <View style={styles.errorBanner}>
           <Feather name="alert-circle" size={14} color={C.white} />
@@ -109,25 +105,16 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* PDF viewer */}
+      {/* PDF viewer — react-native-pdf handles loading state natively */}
       {pdfUri && (
         <View style={styles.viewerContainer}>
-          {loading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={C.primary} />
-              <Text style={styles.loadingText}>Cargando PDF...</Text>
-            </View>
-          )}
-
           <Pdf
             source={{ uri: pdfUri, cache: false }}
             onLoadComplete={(numberOfPages) => {
               setTotal(numberOfPages);
-              setLoading(false);
             }}
             onPageChanged={(p) => setPage(p)}
             onError={() => {
-              setLoading(false);
               setErrorMsg("No se pudo renderizar este PDF.");
               setPdfUri(null);
             }}
@@ -229,16 +216,6 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 13, color: C.white, flex: 1 },
   viewerContainer: { flex: 1 },
-  loadingOverlay: {
-    position: "absolute",
-    inset: 0,
-    zIndex: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.bg,
-    gap: 12,
-  },
-  loadingText: { fontSize: 15, color: C.muted },
   pdf: {
     flex: 1,
     backgroundColor: C.bg,
