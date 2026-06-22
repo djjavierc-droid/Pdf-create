@@ -38,7 +38,7 @@ jobs:
 
       - name: Generate native Android project
         working-directory: artifacts/pdf-tools-mobile
-        run: npx expo prebuild --platform android --clean
+        run: npx expo prebuild --platform android --clean --no-install
 
       - name: Make Gradlew executable
         working-directory: artifacts/pdf-tools-mobile/android
