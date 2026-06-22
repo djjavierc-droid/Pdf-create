@@ -1,3 +1,8 @@
 const { getDefaultConfig } = require("expo/metro-config");
 
-module.exports = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
+
+// Allow HTML files to be bundled as assets (needed for offline PDF.js viewer)
+config.resolver.assetExts.push("html");
+
+module.exports = config;
