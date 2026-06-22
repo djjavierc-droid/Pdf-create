@@ -5,31 +5,23 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "pdf-tools-mobile",
-    "userInterfaceStyle": "automatic",
+    "scheme": "pdftools",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#312e81"
+      "backgroundColor": "#0d0b1e"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#312e81"
+        "backgroundColor": "#0d0b1e"
       },
       "package": "com.javiersooto.pdftools"
     },
-    "web": {
-      "favicon": "./assets/images/icon.png"
-    },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      ["expo-router", { "origin": "https://replit.com/" }],
       "expo-font",
       [
         "expo-image-picker",
