@@ -300,13 +300,11 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     title: {
       fontSize: 26,
-      fontFamily: "Inter_700Bold",
       color: colors.foreground,
       marginBottom: 4,
     },
     subtitle: {
       fontSize: 14,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
     dropZone: {
@@ -332,13 +330,11 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     dropZoneTitle: {
       fontSize: 18,
-      fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
       marginBottom: 6,
     },
     dropZoneSubtitle: {
       fontSize: 13,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
     listContent: {
@@ -366,7 +362,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     imagePage: {
       fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
     },
     imageActions: {
@@ -398,7 +393,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     addMoreText: {
       fontSize: 14,
-      fontFamily: "Inter_500Medium",
       color: colors.primary,
     },
     errorBanner: {
@@ -413,7 +407,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     errorText: {
       fontSize: 13,
-      fontFamily: "Inter_400Regular",
       color: colors.destructiveForeground,
       flex: 1,
     },
@@ -429,7 +422,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     successText: {
       fontSize: 13,
-      fontFamily: "Inter_400Regular",
       color: colors.successForeground,
       flex: 1,
     },
@@ -459,7 +451,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     primaryBtnText: {
       fontSize: 16,
-      fontFamily: "Inter_600SemiBold",
       color: colors.primaryForeground,
     },
     secondaryBtn: {
@@ -473,7 +464,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     footer: {
       textAlign: "center",
       fontSize: 12,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
       paddingVertical: 10,
     },
