@@ -5,7 +5,6 @@ import { Feather } from "@expo/vector-icons";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -28,8 +27,6 @@ const C = {
   webBg: "#111827",
 };
 
-const VIEWER = require("../../assets/pdfjs/viewer.html");
-
 type LoadState = "idle" | "picking" | "loaded" | "error";
 
 export default function ReaderScreen() {
@@ -38,7 +35,7 @@ export default function ReaderScreen() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [fileName, setFileName] = useState("");
   const [pdfB64, setPdfB64] = useState("");
-  const [viewerReady, setViewerReady] = useState(false);
+  const [viewerHtml, setViewerHtml] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [scale, setScale] = useState(1.5);
@@ -56,64 +53,69 @@ export default function ReaderScreen() {
       setLoadState("picking");
       setPage(1);
       setTotal(0);
-      setViewerReady(false);
+
       const b64 = await FileSystem.readAsStringAsync(asset.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      // Load the viewer HTML from the bundled asset
+      const { VIEWER_HTML } = await import("../../assets/pdfjs/viewerHtml");
+      setViewerHtml(VIEWER_HTML);
       setPdfB64(b64);
       setLoadState("loaded");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
+    } catch (e) {
       setErrorMsg("No se pudo abrir el archivo.");
       setLoadState("error");
     }
   }
 
-  function injectPdf(b64: string) {
-    wvRef.current?.injectJavaScript(`window.loadPdf('${b64}'); true;`);
-  }
-
   function onMessage(e: { nativeEvent: { data: string } }) {
     try {
       const msg = JSON.parse(e.nativeEvent.data);
-      if (msg.type === "ready") {
-        setViewerReady(true);
-        if (pdfB64) injectPdf(pdfB64);
-      } else if (msg.type === "pageChanged") {
+      if (msg.type === "pageChanged") {
         setPage(msg.page);
         setTotal(msg.total);
       }
     } catch {}
   }
 
+  function onLoadEnd() {
+    if (pdfB64) {
+      wvRef.current?.injectJavaScript(
+        `window.loadPdf && window.loadPdf('${pdfB64}'); true;`
+      );
+    }
+  }
+
   function prevPage() {
     if (page <= 1) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    wvRef.current?.injectJavaScript(`window.goToPage(${page - 1}); true;`);
+    wvRef.current?.injectJavaScript(`window.goToPage && window.goToPage(${page - 1}); true;`);
   }
 
   function nextPage() {
     if (page >= total) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    wvRef.current?.injectJavaScript(`window.goToPage(${page + 1}); true;`);
+    wvRef.current?.injectJavaScript(`window.goToPage && window.goToPage(${page + 1}); true;`);
   }
 
   function zoomIn() {
     const s = Math.min(scale + 0.25, 3.0);
     setScale(s);
-    wvRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
+    wvRef.current?.injectJavaScript(`window.setScale && window.setScale(${s}); true;`);
   }
 
   function zoomOut() {
     const s = Math.max(scale - 0.25, 0.5);
     setScale(s);
-    wvRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
+    wvRef.current?.injectJavaScript(`window.setScale && window.setScale(${s}); true;`);
   }
 
   function reset() {
     setLoadState("idle");
     setPdfB64("");
-    setViewerReady(false);
+    setViewerHtml(null);
     setPage(1);
     setTotal(0);
     setErrorMsg("");
@@ -129,7 +131,7 @@ export default function ReaderScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Lector de PDF</Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            {loadState === "loaded" ? fileName : "Sin conexión a internet"}
+            {loadState === "loaded" ? fileName : "Funciona sin internet"}
           </Text>
         </View>
         {loadState === "loaded" && (
@@ -139,21 +141,22 @@ export default function ReaderScreen() {
         )}
       </View>
 
-      {/* Idle state */}
+      {/* Idle */}
       {loadState === "idle" && (
-        <Pressable
-          style={({ pressed }) => [styles.dropZone, pressed && { opacity: 0.75 }]}
+        <TouchableOpacity
+          style={styles.dropZone}
           onPress={pickPdf}
+          activeOpacity={0.75}
         >
           <View style={styles.dropIcon}>
             <Feather name="file-text" size={36} color={C.primary} />
           </View>
           <Text style={styles.dropTitle}>Abrir PDF</Text>
-          <Text style={styles.dropSub}>Funciona sin conexión a internet</Text>
+          <Text style={styles.dropSub}>Sin conexión a internet · PDF.js embebido</Text>
           <View style={styles.dropBtn}>
             <Text style={styles.dropBtnText}>Seleccionar archivo</Text>
           </View>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {/* Loading */}
@@ -177,9 +180,8 @@ export default function ReaderScreen() {
       )}
 
       {/* PDF viewer */}
-      {loadState === "loaded" && (
+      {loadState === "loaded" && viewerHtml && (
         <>
-          {/* Toolbar */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolBtn, scale <= 0.5 && styles.toolBtnDim]}
@@ -198,26 +200,20 @@ export default function ReaderScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* WebView */}
           <WebView
             ref={wvRef}
-            source={VIEWER}
+            source={{ html: viewerHtml, baseUrl: "about:blank" }}
             style={styles.webview}
             onMessage={onMessage}
+            onLoadEnd={onLoadEnd}
             javaScriptEnabled
             originWhitelist={["*"]}
             allowFileAccess
             allowUniversalAccessFromFileURLs
             scrollEnabled
             showsVerticalScrollIndicator={false}
-            onLoad={() => {
-              if (!viewerReady && pdfB64) {
-                injectPdf(pdfB64);
-              }
-            }}
           />
 
-          {/* Page controls */}
           <View style={[styles.pageBar, { paddingBottom: insets.bottom + 62 }]}>
             <TouchableOpacity
               style={[styles.pageBtn, page <= 1 && styles.pageBtnDim]}
@@ -300,7 +296,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dropTitle: { fontSize: 18, fontWeight: "600", color: C.text },
-  dropSub: { fontSize: 13, color: C.muted },
+  dropSub: { fontSize: 13, color: C.muted, textAlign: "center", paddingHorizontal: 24 },
   dropBtn: {
     marginTop: 8,
     paddingHorizontal: 28,
