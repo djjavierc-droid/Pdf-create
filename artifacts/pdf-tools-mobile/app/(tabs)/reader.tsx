@@ -326,13 +326,11 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     title: {
       fontSize: 26,
-      fontFamily: "Inter_700Bold",
       color: colors.foreground,
       marginBottom: 4,
     },
     subtitle: {
       fontSize: 14,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
     dropZone: {
@@ -358,13 +356,11 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     dropZoneTitle: {
       fontSize: 18,
-      fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
       marginBottom: 6,
     },
     dropZoneSubtitle: {
       fontSize: 13,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
     },
     loadingContainer: {
@@ -375,7 +371,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     loadingText: {
       fontSize: 16,
-      fontFamily: "Inter_500Medium",
       color: colors.mutedForeground,
     },
     errorContainer: {
@@ -387,12 +382,10 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     errorTitle: {
       fontSize: 18,
-      fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
     },
     errorMsg: {
       fontSize: 14,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
       textAlign: "center",
     },
@@ -405,7 +398,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     retryBtnText: {
       fontSize: 14,
-      fontFamily: "Inter_600SemiBold",
       color: colors.primaryForeground,
     },
     toolbar: {
@@ -433,7 +425,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     scaleText: {
       fontSize: 13,
-      fontFamily: "Inter_500Medium",
       color: colors.foreground,
       minWidth: 44,
       textAlign: "center",
@@ -469,7 +460,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     },
     pageCounter: {
       fontSize: 15,
-      fontFamily: "Inter_600SemiBold",
       color: colors.foreground,
       minWidth: 60,
       textAlign: "center",
@@ -477,7 +467,6 @@ function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useCol
     footer: {
       textAlign: "center",
       fontSize: 12,
-      fontFamily: "Inter_400Regular",
       color: colors.mutedForeground,
       paddingVertical: 10,
     },
