@@ -5,7 +5,6 @@ import { Feather } from "@expo/vector-icons";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -15,28 +14,35 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
-import { useColors } from "@/hooks/useColors";
+const C = {
+  bg: "#0d0b1e",
+  surface: "#13112a",
+  card: "#1a1738",
+  border: "#2a2550",
+  primary: "#7c3aed",
+  primaryLight: "#9f67fa",
+  text: "#f0eeff",
+  muted: "#8b85a8",
+  white: "#ffffff",
+  error: "#ef4444",
+  webBg: "#111827",
+};
 
-type LoadState = "idle" | "loading" | "loaded" | "error";
+const VIEWER = require("../../assets/pdfjs/viewer.html");
 
-const VIEWER_HTML = require("../../assets/pdfjs/viewer.html");
+type LoadState = "idle" | "picking" | "loaded" | "error";
 
 export default function ReaderScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
-  const webViewRef = useRef<WebView>(null);
+  const wvRef = useRef<WebView>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
-  const [pdfBase64, setPdfBase64] = useState<string>("");
+  const [fileName, setFileName] = useState("");
+  const [pdfB64, setPdfB64] = useState("");
   const [viewerReady, setViewerReady] = useState(false);
-  const [fileName, setFileName] = useState<string>("");
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(0);
-  const [errorMsg, setErrorMsg] = useState<string>("");
-  const [scale, setScale] = useState<number>(1.5);
-
-  const isWeb = Platform.OS === "web";
-  const topPad = isWeb ? 67 : insets.top;
-  const bottomPad = isWeb ? 34 : insets.bottom;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [scale, setScale] = useState(1.5);
+  const [errorMsg, setErrorMsg] = useState("");
 
   async function pickPdf() {
     try {
@@ -44,203 +50,198 @@ export default function ReaderScreen() {
         type: "application/pdf",
         copyToCacheDirectory: true,
       });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-
+      if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       setFileName(asset.name ?? "documento.pdf");
-      setLoadState("loading");
-      setCurrentPage(1);
-      setTotalPages(0);
+      setLoadState("picking");
+      setPage(1);
+      setTotal(0);
       setViewerReady(false);
-
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+      const b64 = await FileSystem.readAsStringAsync(asset.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-
-      setPdfBase64(base64);
+      setPdfB64(b64);
       setLoadState("loaded");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      setErrorMsg("No se pudo abrir el PDF. Inténtalo de nuevo.");
+    } catch {
+      setErrorMsg("No se pudo abrir el archivo.");
       setLoadState("error");
     }
   }
 
-  function onWebViewReady() {
-    setViewerReady(true);
-    if (pdfBase64) {
-      webViewRef.current?.injectJavaScript(`window.loadPdf('${pdfBase64}'); true;`);
-    }
+  function injectPdf(b64: string) {
+    wvRef.current?.injectJavaScript(`window.loadPdf('${b64}'); true;`);
   }
 
-  function onWebViewMessage(event: { nativeEvent: { data: string } }) {
+  function onMessage(e: { nativeEvent: { data: string } }) {
     try {
-      const msg = JSON.parse(event.nativeEvent.data);
+      const msg = JSON.parse(e.nativeEvent.data);
       if (msg.type === "ready") {
-        onWebViewReady();
+        setViewerReady(true);
+        if (pdfB64) injectPdf(pdfB64);
       } else if (msg.type === "pageChanged") {
-        setCurrentPage(msg.page);
-        setTotalPages(msg.total);
+        setPage(msg.page);
+        setTotal(msg.total);
       }
     } catch {}
   }
 
-  function goNext() {
-    if (currentPage >= totalPages) return;
+  function prevPage() {
+    if (page <= 1) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    webViewRef.current?.injectJavaScript(
-      `window.goToPage(${currentPage + 1}); true;`
-    );
+    wvRef.current?.injectJavaScript(`window.goToPage(${page - 1}); true;`);
   }
 
-  function goPrev() {
-    if (currentPage <= 1) return;
+  function nextPage() {
+    if (page >= total) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    webViewRef.current?.injectJavaScript(
-      `window.goToPage(${currentPage - 1}); true;`
-    );
+    wvRef.current?.injectJavaScript(`window.goToPage(${page + 1}); true;`);
   }
 
   function zoomIn() {
     const s = Math.min(scale + 0.25, 3.0);
     setScale(s);
-    webViewRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
+    wvRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
   }
 
   function zoomOut() {
     const s = Math.max(scale - 0.25, 0.5);
     setScale(s);
-    webViewRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
+    wvRef.current?.injectJavaScript(`window.setScale(${s}); true;`);
   }
 
-  const styles = makeStyles(colors);
+  function reset() {
+    setLoadState("idle");
+    setPdfB64("");
+    setViewerReady(false);
+    setPage(1);
+    setTotal(0);
+    setErrorMsg("");
+  }
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Lector de PDF</Text>
-        {loadState === "loaded" ? (
-          <Text style={styles.subtitle} numberOfLines={1}>{fileName}</Text>
-        ) : (
-          <Text style={styles.subtitle}>Selecciona un archivo PDF para leerlo</Text>
+        <View style={styles.headerIcon}>
+          <Feather name="book-open" size={20} color={C.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Lector de PDF</Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {loadState === "loaded" ? fileName : "Sin conexión a internet"}
+          </Text>
+        </View>
+        {loadState === "loaded" && (
+          <TouchableOpacity onPress={reset} style={styles.resetBtn}>
+            <Feather name="x" size={18} color={C.muted} />
+          </TouchableOpacity>
         )}
       </View>
 
+      {/* Idle state */}
       {loadState === "idle" && (
         <Pressable
-          testID="button-pick-pdf"
-          style={({ pressed }) => [styles.dropZone, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.dropZone, pressed && { opacity: 0.75 }]}
           onPress={pickPdf}
         >
-          <View style={styles.dropZoneIcon}>
-            <Feather name="file-text" size={40} color={colors.primary} />
+          <View style={styles.dropIcon}>
+            <Feather name="file-text" size={36} color={C.primary} />
           </View>
-          <Text style={styles.dropZoneTitle}>Abrir PDF</Text>
-          <Text style={styles.dropZoneSubtitle}>Toca para seleccionar un archivo</Text>
+          <Text style={styles.dropTitle}>Abrir PDF</Text>
+          <Text style={styles.dropSub}>Funciona sin conexión a internet</Text>
+          <View style={styles.dropBtn}>
+            <Text style={styles.dropBtnText}>Seleccionar archivo</Text>
+          </View>
         </Pressable>
       )}
 
-      {loadState === "loading" && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      {/* Loading */}
+      {loadState === "picking" && (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={C.primary} />
           <Text style={styles.loadingText}>Cargando PDF...</Text>
         </View>
       )}
 
+      {/* Error */}
       {loadState === "error" && (
-        <View style={styles.errorContainer}>
-          <Feather name="alert-triangle" size={40} color={colors.destructive} />
-          <Text style={styles.errorTitle}>Error al cargar</Text>
+        <View style={styles.centerBox}>
+          <Feather name="alert-triangle" size={40} color={C.error} />
+          <Text style={styles.errorTitle}>Error</Text>
           <Text style={styles.errorMsg}>{errorMsg}</Text>
-          <TouchableOpacity
-            testID="button-retry"
-            style={styles.retryBtn}
-            onPress={() => { setLoadState("idle"); setErrorMsg(""); }}
-          >
-            <Text style={styles.retryBtnText}>Intentar de nuevo</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => setLoadState("idle")}>
+            <Text style={styles.retryText}>Intentar de nuevo</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {/* PDF viewer */}
       {loadState === "loaded" && (
         <>
+          {/* Toolbar */}
           <View style={styles.toolbar}>
             <TouchableOpacity
-              testID="button-open-new"
-              style={styles.toolbarBtn}
-              onPress={() => { setLoadState("idle"); setPdfBase64(""); setViewerReady(false); }}
+              style={[styles.toolBtn, scale <= 0.5 && styles.toolBtnDim]}
+              onPress={zoomOut}
+              disabled={scale <= 0.5}
             >
-              <Feather name="folder" size={18} color={colors.primary} />
+              <Feather name="zoom-out" size={18} color={scale <= 0.5 ? C.muted : C.primaryLight} />
             </TouchableOpacity>
-            <View style={styles.zoomControls}>
-              <TouchableOpacity
-                testID="button-zoom-out"
-                style={styles.toolbarBtn}
-                onPress={zoomOut}
-                disabled={scale <= 0.5}
-              >
-                <Feather name="zoom-out" size={18} color={scale <= 0.5 ? colors.mutedForeground : colors.primary} />
-              </TouchableOpacity>
-              <Text style={styles.scaleText}>{Math.round(scale * 100)}%</Text>
-              <TouchableOpacity
-                testID="button-zoom-in"
-                style={styles.toolbarBtn}
-                onPress={zoomIn}
-                disabled={scale >= 3.0}
-              >
-                <Feather name="zoom-in" size={18} color={scale >= 3.0 ? colors.mutedForeground : colors.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.webViewContainer}>
-            <WebView
-              ref={webViewRef}
-              source={VIEWER_HTML}
-              style={styles.webView}
-              onMessage={onWebViewMessage}
-              javaScriptEnabled
-              originWhitelist={["*"]}
-              allowFileAccess
-              allowUniversalAccessFromFileURLs
-              scrollEnabled
-              showsVerticalScrollIndicator={false}
-              onLoad={() => {
-                if (!viewerReady && pdfBase64) {
-                  webViewRef.current?.injectJavaScript(
-                    `window.loadPdf('${pdfBase64}'); true;`
-                  );
-                }
-              }}
-            />
-          </View>
-
-          <View style={[styles.pageControls, { paddingBottom: bottomPad + 60 }]}>
+            <Text style={styles.zoomLabel}>{Math.round(scale * 100)}%</Text>
             <TouchableOpacity
-              testID="button-prev-page"
-              style={[styles.pageBtn, currentPage <= 1 && styles.pageBtnDisabled]}
-              onPress={goPrev}
-              disabled={currentPage <= 1}
+              style={[styles.toolBtn, scale >= 3.0 && styles.toolBtnDim]}
+              onPress={zoomIn}
+              disabled={scale >= 3.0}
             >
-              <Feather name="chevron-left" size={22} color={currentPage <= 1 ? colors.mutedForeground : colors.primary} />
+              <Feather name="zoom-in" size={18} color={scale >= 3.0 ? C.muted : C.primaryLight} />
             </TouchableOpacity>
-            <Text testID="text-page-counter" style={styles.pageCounter}>
-              {totalPages > 0 ? `${currentPage} / ${totalPages}` : "—"}
+          </View>
+
+          {/* WebView */}
+          <WebView
+            ref={wvRef}
+            source={VIEWER}
+            style={styles.webview}
+            onMessage={onMessage}
+            javaScriptEnabled
+            originWhitelist={["*"]}
+            allowFileAccess
+            allowUniversalAccessFromFileURLs
+            scrollEnabled
+            showsVerticalScrollIndicator={false}
+            onLoad={() => {
+              if (!viewerReady && pdfB64) {
+                injectPdf(pdfB64);
+              }
+            }}
+          />
+
+          {/* Page controls */}
+          <View style={[styles.pageBar, { paddingBottom: insets.bottom + 62 }]}>
+            <TouchableOpacity
+              style={[styles.pageBtn, page <= 1 && styles.pageBtnDim]}
+              onPress={prevPage}
+              disabled={page <= 1}
+            >
+              <Feather name="chevron-left" size={22} color={page <= 1 ? C.muted : C.primary} />
+            </TouchableOpacity>
+            <Text style={styles.pageLabel}>
+              {total > 0 ? `${page} / ${total}` : "—"}
             </Text>
             <TouchableOpacity
-              testID="button-next-page"
-              style={[styles.pageBtn, currentPage >= totalPages && styles.pageBtnDisabled]}
-              onPress={goNext}
-              disabled={currentPage >= totalPages}
+              style={[styles.pageBtn, page >= total && styles.pageBtnDim]}
+              onPress={nextPage}
+              disabled={page >= total}
             >
-              <Feather name="chevron-right" size={22} color={currentPage >= totalPages ? colors.mutedForeground : colors.primary} />
+              <Feather name="chevron-right" size={22} color={page >= total ? C.muted : C.primary} />
             </TouchableOpacity>
           </View>
         </>
       )}
 
       {loadState !== "loaded" && (
-        <Text testID="text-footer" style={[styles.footer, { paddingBottom: bottomPad + 60 }]}>
+        <Text style={[styles.footer, { paddingBottom: insets.bottom + 70 }]}>
           Desarrollada por Javier Soto
         </Text>
       )}
@@ -248,54 +249,120 @@ export default function ReaderScreen() {
   );
 }
 
-function makeStyles(colors: ReturnType<typeof import("@/hooks/useColors").useColors>) {
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 },
-    title: { fontSize: 26, fontWeight: "700", color: colors.foreground, marginBottom: 4 },
-    subtitle: { fontSize: 14, color: colors.mutedForeground },
-    dropZone: {
-      margin: 20, flex: 1, borderWidth: 2, borderColor: colors.primary,
-      borderStyle: "dashed", borderRadius: 16, alignItems: "center",
-      justifyContent: "center", backgroundColor: colors.secondary, padding: 40,
-    },
-    dropZoneIcon: {
-      width: 80, height: 80, borderRadius: 40, backgroundColor: colors.muted,
-      alignItems: "center", justifyContent: "center", marginBottom: 16,
-    },
-    dropZoneTitle: { fontSize: 18, fontWeight: "600", color: colors.foreground, marginBottom: 6 },
-    dropZoneSubtitle: { fontSize: 13, color: colors.mutedForeground },
-    loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
-    loadingText: { fontSize: 16, color: colors.mutedForeground },
-    errorContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40, gap: 12 },
-    errorTitle: { fontSize: 18, fontWeight: "600", color: colors.foreground },
-    errorMsg: { fontSize: 14, color: colors.mutedForeground, textAlign: "center" },
-    retryBtn: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 12 },
-    retryBtnText: { fontSize: 14, fontWeight: "600", color: colors.primaryForeground },
-    toolbar: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: 16, paddingVertical: 8,
-      borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card,
-    },
-    toolbarBtn: {
-      width: 38, height: 38, borderRadius: 10, backgroundColor: colors.muted,
-      alignItems: "center", justifyContent: "center",
-    },
-    zoomControls: { flexDirection: "row", alignItems: "center", gap: 8 },
-    scaleText: { fontSize: 13, color: colors.foreground, minWidth: 44, textAlign: "center" },
-    webViewContainer: { flex: 1 },
-    webView: { flex: 1, backgroundColor: "#1e1e2e" },
-    pageControls: {
-      flexDirection: "row", alignItems: "center", justifyContent: "center",
-      gap: 20, paddingTop: 12, paddingHorizontal: 20,
-      backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border,
-    },
-    pageBtn: {
-      width: 44, height: 44, borderRadius: 12, backgroundColor: colors.secondary,
-      alignItems: "center", justifyContent: "center",
-    },
-    pageBtnDisabled: { opacity: 0.4 },
-    pageCounter: { fontSize: 15, fontWeight: "600", color: colors.foreground, minWidth: 60, textAlign: "center" },
-    footer: { textAlign: "center", fontSize: 12, color: colors.mutedForeground, paddingVertical: 10 },
-  });
-}
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: 18, fontWeight: "700", color: C.text },
+  subtitle: { fontSize: 12, color: C.muted, marginTop: 1 },
+  resetBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropZone: {
+    flex: 1,
+    margin: 20,
+    borderWidth: 2,
+    borderColor: C.primary,
+    borderStyle: "dashed",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.surface,
+    gap: 12,
+  },
+  dropIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropTitle: { fontSize: 18, fontWeight: "600", color: C.text },
+  dropSub: { fontSize: 13, color: C.muted },
+  dropBtn: {
+    marginTop: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    backgroundColor: C.primary,
+    borderRadius: 14,
+  },
+  dropBtnText: { fontSize: 15, fontWeight: "600", color: C.white },
+  centerBox: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 40 },
+  loadingText: { fontSize: 16, color: C.muted },
+  errorTitle: { fontSize: 18, fontWeight: "700", color: C.text },
+  errorMsg: { fontSize: 13, color: C.muted, textAlign: "center" },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: C.primary,
+    borderRadius: 12,
+  },
+  retryText: { fontSize: 14, fontWeight: "600", color: C.white },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: C.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  toolBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolBtnDim: { opacity: 0.4 },
+  zoomLabel: { fontSize: 14, fontWeight: "600", color: C.text, minWidth: 50, textAlign: "center" },
+  webview: { flex: 1, backgroundColor: C.webBg },
+  pageBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 24,
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    backgroundColor: C.surface,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  pageBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pageBtnDim: { opacity: 0.4 },
+  pageLabel: { fontSize: 16, fontWeight: "700", color: C.text, minWidth: 64, textAlign: "center" },
+  footer: { textAlign: "center", fontSize: 11, color: C.muted, paddingTop: 6 },
+});
