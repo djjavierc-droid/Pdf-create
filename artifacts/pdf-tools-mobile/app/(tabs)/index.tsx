@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -45,6 +45,15 @@ export default function ConverterScreen() {
   const [state, setState] = useState<State>("idle");
   const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Pre-warm expo-print's internal WebView renderer on first mount.
+  // On Android, the first call to printToFileAsync can hang for a long time
+  // while the headless Chromium engine initializes. Calling it silently on
+  // mount means the engine is ready by the time the user taps "Convertir".
+  useEffect(() => {
+    Print.printToFileAsync({ html: "<html><body></body></html>", base64: false })
+      .catch(() => {});
+  }, []);
 
   async function pickImages() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -106,12 +115,26 @@ export default function ConverterScreen() {
         .join("");
 
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#fff;}</style></head><body>${pages}</body></html>`;
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
+
+      // Race the print call against a 30-second timeout.
+      // printToFileAsync can hang indefinitely on first launch while Android
+      // warms up its headless Chromium engine — the timeout unblocks the UI.
+      const printPromise = Print.printToFileAsync({ html, base64: false });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 30000)
+      );
+      const { uri } = await Promise.race([printPromise, timeoutPromise]);
+
       setPdfUri(uri);
       setState("done");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      setErrorMsg("Error al convertir. Inténtalo de nuevo.");
+    } catch (e) {
+      const isTimeout = e instanceof Error && e.message === "timeout";
+      setErrorMsg(
+        isTimeout
+          ? "El motor tardó en iniciar. Toca 'Convertir' de nuevo."
+          : "Error al convertir. Inténtalo de nuevo."
+      );
       setState("error");
     }
   }
