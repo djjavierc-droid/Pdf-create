@@ -28,8 +28,7 @@
         {
           "photosPermission": "La app necesita acceder a tus fotos para convertirlas a PDF."
         }
-      ],
-      "./plugins/withPdfIntentFilter"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
