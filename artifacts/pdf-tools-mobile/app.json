@@ -23,7 +23,12 @@
         {
           "action": "android.intent.action.VIEW",
           "autoVerify": false,
-          "data": [{ "mimeType": "application/pdf" }],
+          "data": [
+            { "scheme": "file",    "mimeType": "application/pdf" },
+            { "scheme": "content", "mimeType": "application/pdf" },
+            { "scheme": "http",    "mimeType": "application/pdf" },
+            { "scheme": "https",   "mimeType": "application/pdf" }
+          ],
           "category": [
             "android.intent.category.DEFAULT",
             "android.intent.category.BROWSABLE"
