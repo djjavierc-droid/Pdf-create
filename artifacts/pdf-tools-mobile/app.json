@@ -18,7 +18,18 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0d0b1e"
       },
-      "package": "com.javiersooto.pdftools"
+      "package": "com.javiersooto.pdftools",
+      "intentFilters": [
+        {
+          "action": "android.intent.action.VIEW",
+          "autoVerify": false,
+          "data": [{ "mimeType": "application/pdf" }],
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ]
+        }
+      ]
     },
     "plugins": [
       ["expo-router", { "origin": "https://replit.com/" }],
