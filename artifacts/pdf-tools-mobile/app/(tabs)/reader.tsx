@@ -1,7 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,7 +9,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import Pdf from "react-native-pdf";
+import { takePendingPdf } from "../../lib/pendingPdf";
 
 const C = {
   bg: "#0d0b1e",
@@ -31,6 +33,28 @@ export default function ReaderScreen() {
   const [total, setTotal] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Pick up any PDF that was opened from the file manager / "Abrir con..."
+  useFocusEffect(
+    useCallback(() => {
+      const uri = takePendingPdf();
+      if (uri) {
+        loadUri(uri);
+      }
+    }, [])
+  );
+
+  function loadUri(uri: string) {
+    // Decode percent-encoded characters for the display name only
+    const raw = uri.split("/").pop() ?? "documento.pdf";
+    const name = decodeURIComponent(raw).split("?")[0];
+    setPdfUri(uri);
+    setFileName(name);
+    setPage(1);
+    setTotal(0);
+    setErrorMsg("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }
+
   async function pickPdf() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -38,13 +62,8 @@ export default function ReaderScreen() {
         copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        setPdfUri(asset.uri);
-        setFileName(asset.name ?? "documento.pdf");
-        setPage(1);
-        setTotal(0);
-        setErrorMsg("");
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        loadUri(result.assets[0].uri);
+        setFileName(result.assets[0].name ?? "documento.pdf");
       }
     } catch {
       setErrorMsg("No se pudo abrir el selector. Intenta de nuevo.");
@@ -97,7 +116,7 @@ export default function ReaderScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Error banner (only when no PDF loaded) */}
+      {/* Error banner */}
       {!pdfUri && errorMsg !== "" && (
         <View style={styles.errorBanner}>
           <Feather name="alert-circle" size={14} color={C.white} />
@@ -105,7 +124,7 @@ export default function ReaderScreen() {
         </View>
       )}
 
-      {/* PDF viewer — react-native-pdf handles loading state natively */}
+      {/* PDF viewer */}
       {pdfUri && (
         <View style={styles.viewerContainer}>
           <Pdf
@@ -124,7 +143,6 @@ export default function ReaderScreen() {
             fitPolicy={0}
           />
 
-          {/* Page indicator */}
           {total > 0 && (
             <View style={[styles.pageBar, { paddingBottom: insets.bottom + 64 }]}>
               <Text style={styles.pageLabel}>
