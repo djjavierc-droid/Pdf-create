@@ -18,23 +18,7 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0d0b1e"
       },
-      "package": "com.javiersooto.pdftools",
-      "intentFilters": [
-        {
-          "action": "android.intent.action.VIEW",
-          "autoVerify": false,
-          "data": [
-            { "scheme": "file",    "mimeType": "application/pdf" },
-            { "scheme": "content", "mimeType": "application/pdf" },
-            { "scheme": "http",    "mimeType": "application/pdf" },
-            { "scheme": "https",   "mimeType": "application/pdf" }
-          ],
-          "category": [
-            "android.intent.category.DEFAULT",
-            "android.intent.category.BROWSABLE"
-          ]
-        }
-      ]
+      "package": "com.javiersooto.pdftools"
     },
     "plugins": [
       ["expo-router", { "origin": "https://replit.com/" }],
@@ -44,7 +28,8 @@
         {
           "photosPermission": "La app necesita acceder a tus fotos para convertirlas a PDF."
         }
-      ]
+      ],
+      "./plugins/withPdfIntentFilter"
     ],
     "experiments": {
       "typedRoutes": true
