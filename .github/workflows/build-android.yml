@@ -40,6 +40,47 @@ jobs:
         working-directory: artifacts/pdf-tools-mobile
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Patch AndroidManifest — add PDF intent filter
+        working-directory: artifacts/pdf-tools-mobile/android/app/src/main
+        run: |
+          python3 << 'PYEOF'
+          import re, sys
+
+          with open('AndroidManifest.xml', 'r') as f:
+              content = f.read()
+
+          print('=== BEFORE PATCH ===')
+          print(content)
+
+          if 'application/pdf' in content:
+              print('=== PDF intent-filter already present, skipping ===')
+              sys.exit(0)
+
+          intent_filter = (
+              '\n        <intent-filter>\n'
+              '            <action android:name="android.intent.action.VIEW"/>\n'
+              '            <category android:name="android.intent.category.DEFAULT"/>\n'
+              '            <category android:name="android.intent.category.BROWSABLE"/>\n'
+              '            <data android:scheme="file" android:mimeType="application/pdf"/>\n'
+              '            <data android:scheme="content" android:mimeType="application/pdf"/>\n'
+              '        </intent-filter>'
+          )
+
+          # Insert before the FIRST </activity> — always belongs to MainActivity in Expo manifests
+          patched = content.replace('</activity>', intent_filter + '\n    </activity>', 1)
+
+          if patched == content:
+              print('ERROR: could not find </activity> to patch')
+              sys.exit(1)
+
+          with open('AndroidManifest.xml', 'w') as f:
+              f.write(patched)
+
+          print('=== AFTER PATCH ===')
+          print(patched)
+          print('=== PDF intent-filter injected successfully ===')
+          PYEOF
+
       - name: Create signing keystore
         run: |
           keytool -genkeypair \
