@@ -50,18 +50,60 @@ export default function ConverterScreen() {
   const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Save-to-Downloads modal state
+  // Save modal state
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [fileName, setFileName] = useState("mi-documento");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMsg, setSaveMsg] = useState("");
   const inputRef = useRef<TextInput>(null);
 
+  // Folder picker: triggered AFTER the modal closes to avoid
+  // the Android Activity-inside-Dialog crash.
+  const [pendingSafeName, setPendingSafeName] = useState<string | null>(null);
+  // Toast shown after save completes (outside any modal)
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
   // Pre-warm expo-print's WebView renderer on mount.
   useEffect(() => {
     Print.printToFileAsync({ html: "<html><body></body></html>", base64: false })
       .catch(() => {});
   }, []);
+
+  // Run the SAF folder picker AFTER the modal is fully closed.
+  // Calling it from inside a Modal crashes on Android (Activity-in-Dialog conflict).
+  useEffect(() => {
+    if (!pendingSafeName || showSaveModal) return;
+    const name = pendingSafeName;
+    setPendingSafeName(null);
+
+    (async () => {
+      try {
+        const picked =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!picked.granted) return; // user cancelled — nothing to do
+
+        const destUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          picked.directoryUri,
+          name,
+          "application/pdf"
+        );
+        const base64 = await FileSystem.readAsStringAsync(pdfUri!, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(destUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        setToast({ ok: true, msg: `"${name}.pdf" guardado correctamente.` });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        setToast({ ok: false, msg: "No se pudo guardar. Intenta con 'Compartir'." });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      // Auto-hide toast after 4 s
+      setTimeout(() => setToast(null), 4000);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSafeName, showSaveModal]);
 
   async function pickImages() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -161,47 +203,14 @@ export default function ConverterScreen() {
     setShowSaveModal(true);
   }
 
-  async function saveToFolder() {
+  function confirmSaveAndPick() {
     if (!pdfUri || !fileName.trim()) return;
-    setSaveState("saving");
-    try {
-      const safeName = fileName.trim().replace(/[^\w\s\-_.]/g, "").trim() || "mi-documento";
-
-      // Open the Android system folder picker (SAF — works on ALL folders,
-      // including Xiaomi/MIUI "Descargas" and any other location)
-      const pickerResult =
-        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-
-      if (!pickerResult.granted) {
-        setSaveState("idle");
-        return;
-      }
-
-      // Create the PDF file inside the picked folder
-      const newUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        pickerResult.directoryUri,
-        safeName,
-        "application/pdf"
-      );
-
-      // Read source PDF (created by expo-print in cache) as base64
-      const base64 = await FileSystem.readAsStringAsync(pdfUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Write to the chosen location
-      await FileSystem.writeAsStringAsync(newUri, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      setSaveState("saved");
-      setSaveMsg(`Guardado como "${safeName}.pdf" en la carpeta elegida.`);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      setSaveState("error");
-      setSaveMsg("No se pudo guardar. Intenta con 'Compartir'.");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
+    const safeName = fileName.trim().replace(/[^\w\s\-_.]/g, "").trim() || "mi-documento";
+    // Close the modal FIRST — launching an Android Activity from inside a
+    // Modal (Dialog) crashes immediately. The useEffect above picks up
+    // pendingSafeName once showSaveModal becomes false.
+    setShowSaveModal(false);
+    setPendingSafeName(safeName);
   }
 
   function reset() {
@@ -381,24 +390,10 @@ export default function ConverterScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
-                onSubmitEditing={saveToFolder}
+                onSubmitEditing={confirmSaveAndPick}
               />
               <Text style={styles.inputExt}>.pdf</Text>
             </View>
-
-            {/* Result message */}
-            {saveState === "saved" && (
-              <View style={styles.resultRow}>
-                <Feather name="check-circle" size={14} color={C.success} />
-                <Text style={[styles.resultText, { color: C.success }]}>{saveMsg}</Text>
-              </View>
-            )}
-            {saveState === "error" && (
-              <View style={styles.resultRow}>
-                <Feather name="alert-circle" size={14} color={C.error} />
-                <Text style={[styles.resultText, { color: C.error }]}>{saveMsg}</Text>
-              </View>
-            )}
 
             {/* Buttons */}
             <View style={styles.modalBtns}>
@@ -406,34 +401,35 @@ export default function ConverterScreen() {
                 style={styles.modalCancelBtn}
                 onPress={() => setShowSaveModal(false)}
               >
-                <Text style={styles.modalCancelText}>
-                  {saveState === "saved" ? "Cerrar" : "Cancelar"}
-                </Text>
+                <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
 
-              {saveState !== "saved" && (
-                <TouchableOpacity
-                  style={[
-                    styles.modalSaveBtn,
-                    (saveState === "saving" || !fileName.trim()) && { opacity: 0.5 },
-                  ]}
-                  onPress={saveToFolder}
-                  disabled={saveState === "saving" || !fileName.trim()}
-                >
-                  {saveState === "saving" ? (
-                    <ActivityIndicator color={C.white} size="small" />
-                  ) : (
-                    <Feather name="save" size={16} color={C.white} />
-                  )}
-                  <Text style={styles.modalSaveText}>
-                    {saveState === "saving" ? "Guardando..." : "Guardar"}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, !fileName.trim() && { opacity: 0.5 }]}
+                onPress={confirmSaveAndPick}
+                disabled={!fileName.trim()}
+              >
+                <Feather name="save" size={16} color={C.white} />
+                <Text style={styles.modalSaveText}>Elegir carpeta</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* Toast shown after SAF save completes (outside the modal) */}
+      {toast && (
+        <View
+          style={[
+            styles.toast,
+            { backgroundColor: toast.ok ? C.success : C.error },
+          ]}
+          pointerEvents="none"
+        >
+          <Feather name={toast.ok ? "check-circle" : "alert-circle"} size={16} color={C.white} />
+          <Text style={styles.toastText}>{toast.msg}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -567,11 +563,13 @@ const styles = StyleSheet.create({
     paddingRight: 14, fontSize: 15, color: C.muted, fontWeight: "500",
   },
 
-  resultRow: {
-    flexDirection: "row", alignItems: "flex-start", gap: 8,
-    marginBottom: 16, paddingHorizontal: 2,
+  toast: {
+    position: "absolute", bottom: 100, left: 16, right: 16,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 12, elevation: 8,
   },
-  resultText: { fontSize: 13, flex: 1, lineHeight: 18 },
+  toastText: { flex: 1, fontSize: 13, color: "#fff", fontWeight: "600" },
 
   modalBtns: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
   modalCancelBtn: {
