@@ -8,11 +8,8 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -162,7 +159,6 @@ export default function ConverterScreen() {
     setSaveMsg("");
     setFileName("mi-documento");
     setShowSaveModal(true);
-    setTimeout(() => inputRef.current?.focus(), 300);
   }
 
   async function saveToDownloads() {
@@ -337,13 +333,11 @@ export default function ConverterScreen() {
       <Modal
         visible={showSaveModal}
         transparent
-        animationType="fade"
+        animationType="slide"
+        statusBarTranslucent
         onRequestClose={() => setShowSaveModal(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
+        <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             {/* Title */}
             <View style={styles.modalHeader}>
@@ -423,7 +417,7 @@ export default function ConverterScreen() {
               )}
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
