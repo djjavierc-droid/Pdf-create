@@ -2,6 +2,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 import { Feather } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -17,7 +18,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import RNBlobUtil from "react-native-blob-util";
 
 const C = {
   bg: "#0d0b1e",
@@ -161,26 +161,41 @@ export default function ConverterScreen() {
     setShowSaveModal(true);
   }
 
-  async function saveToDownloads() {
+  async function saveToFolder() {
     if (!pdfUri || !fileName.trim()) return;
     setSaveState("saving");
     try {
       const safeName = fileName.trim().replace(/[^\w\s\-_.]/g, "").trim() || "mi-documento";
-      const destPath = `${RNBlobUtil.fs.dirs.DownloadDir}/${safeName}.pdf`;
 
-      await RNBlobUtil.fs.cp(pdfUri, destPath);
+      // Open the Android system folder picker (SAF — works on ALL folders,
+      // including Xiaomi/MIUI "Descargas" and any other location)
+      const pickerResult =
+        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
 
-      // Notify Android media scanner so the file appears in the Downloads app
-      await RNBlobUtil.android.addCompleteDownload({
-        title: safeName + ".pdf",
-        description: "Creado con PDF Tools",
-        mime: "application/pdf",
-        path: destPath,
-        showNotification: true,
+      if (!pickerResult.granted) {
+        setSaveState("idle");
+        return;
+      }
+
+      // Create the PDF file inside the picked folder
+      const newUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        pickerResult.directoryUri,
+        safeName,
+        "application/pdf"
+      );
+
+      // Read source PDF (created by expo-print in cache) as base64
+      const base64 = await FileSystem.readAsStringAsync(pdfUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Write to the chosen location
+      await FileSystem.writeAsStringAsync(newUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
       setSaveState("saved");
-      setSaveMsg(`Guardado en Descargas como "${safeName}.pdf"`);
+      setSaveMsg(`Guardado como "${safeName}.pdf" en la carpeta elegida.`);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       setSaveState("error");
@@ -344,13 +359,13 @@ export default function ConverterScreen() {
               <View style={styles.modalIconBox}>
                 <Feather name="download" size={22} color={C.primary} />
               </View>
-              <Text style={styles.modalTitle}>Guardar en Descargas</Text>
+              <Text style={styles.modalTitle}>Guardar PDF</Text>
             </View>
 
             <Text style={styles.modalSub}>
-              El PDF se guardará en la carpeta{" "}
-              <Text style={{ color: C.primaryLight }}>Descargas</Text> de tu
-              dispositivo con el nombre que elijas.
+              Elige el nombre y luego se abrirá el selector de{" "}
+              <Text style={{ color: C.primaryLight }}>carpeta</Text> del sistema
+              (funciona con Descargas, Drive y cualquier otra ubicación).
             </Text>
 
             {/* Filename input */}
@@ -366,7 +381,7 @@ export default function ConverterScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
-                onSubmitEditing={saveToDownloads}
+                onSubmitEditing={saveToFolder}
               />
               <Text style={styles.inputExt}>.pdf</Text>
             </View>
@@ -402,7 +417,7 @@ export default function ConverterScreen() {
                     styles.modalSaveBtn,
                     (saveState === "saving" || !fileName.trim()) && { opacity: 0.5 },
                   ]}
-                  onPress={saveToDownloads}
+                  onPress={saveToFolder}
                   disabled={saveState === "saving" || !fileName.trim()}
                 >
                   {saveState === "saving" ? (
