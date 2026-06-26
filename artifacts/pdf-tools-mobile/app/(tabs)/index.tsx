@@ -3,19 +3,24 @@ import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Feather } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import RNBlobUtil from "react-native-blob-util";
 
 const C = {
   bg: "#0d0b1e",
@@ -29,6 +34,7 @@ const C = {
   success: "#10b981",
   error: "#ef4444",
   white: "#ffffff",
+  overlay: "rgba(0,0,0,0.7)",
 };
 
 interface Img {
@@ -38,6 +44,7 @@ interface Img {
 }
 
 type State = "idle" | "converting" | "done" | "error";
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function ConverterScreen() {
   const insets = useSafeAreaInsets();
@@ -46,10 +53,14 @@ export default function ConverterScreen() {
   const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Pre-warm expo-print's internal WebView renderer on first mount.
-  // On Android, the first call to printToFileAsync can hang for a long time
-  // while the headless Chromium engine initializes. Calling it silently on
-  // mount means the engine is ready by the time the user taps "Convertir".
+  // Save-to-Downloads modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [fileName, setFileName] = useState("mi-documento");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveMsg, setSaveMsg] = useState("");
+  const inputRef = useRef<TextInput>(null);
+
+  // Pre-warm expo-print's WebView renderer on mount.
   useEffect(() => {
     Print.printToFileAsync({ html: "<html><body></body></html>", base64: false })
       .catch(() => {});
@@ -116,9 +127,6 @@ export default function ConverterScreen() {
 
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#fff;}</style></head><body>${pages}</body></html>`;
 
-      // Race the print call against a 30-second timeout.
-      // printToFileAsync can hang indefinitely on first launch while Android
-      // warms up its headless Chromium engine — the timeout unblocks the UI.
       const printPromise = Print.printToFileAsync({ html, base64: false });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 30000)
@@ -144,9 +152,45 @@ export default function ConverterScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await Sharing.shareAsync(pdfUri, {
       mimeType: "application/pdf",
-      dialogTitle: "Guardar PDF",
+      dialogTitle: "Compartir PDF",
       UTI: "com.adobe.pdf",
     });
+  }
+
+  function openSaveModal() {
+    setSaveState("idle");
+    setSaveMsg("");
+    setFileName("mi-documento");
+    setShowSaveModal(true);
+    setTimeout(() => inputRef.current?.focus(), 300);
+  }
+
+  async function saveToDownloads() {
+    if (!pdfUri || !fileName.trim()) return;
+    setSaveState("saving");
+    try {
+      const safeName = fileName.trim().replace(/[^\w\s\-_.]/g, "").trim() || "mi-documento";
+      const destPath = `${RNBlobUtil.fs.dirs.DownloadDir}/${safeName}.pdf`;
+
+      await RNBlobUtil.fs.cp(pdfUri, destPath);
+
+      // Notify Android media scanner so the file appears in the Downloads app
+      await RNBlobUtil.android.addCompleteDownload({
+        title: safeName + ".pdf",
+        description: "Creado con PDF Tools",
+        mime: "application/pdf",
+        path: destPath,
+        showNotification: true,
+      });
+
+      setSaveState("saved");
+      setSaveMsg(`Guardado en Descargas como "${safeName}.pdf"`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setSaveState("error");
+      setSaveMsg("No se pudo guardar. Intenta con 'Compartir'.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
   }
 
   function reset() {
@@ -255,10 +299,19 @@ export default function ConverterScreen() {
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 70 }]}>
         {state === "done" ? (
           <View style={styles.doneRow}>
-            <TouchableOpacity style={[styles.mainBtn, { flex: 1 }]} onPress={sharePdf}>
-              <Feather name="download" size={18} color={C.white} />
-              <Text style={styles.mainBtnText}>Guardar / Compartir PDF</Text>
+            {/* Share button */}
+            <TouchableOpacity style={[styles.actionBtnLarge, styles.shareBtn]} onPress={sharePdf}>
+              <Feather name="share-2" size={18} color={C.white} />
+              <Text style={styles.actionBtnText}>Compartir</Text>
             </TouchableOpacity>
+
+            {/* Save to Downloads button */}
+            <TouchableOpacity style={[styles.actionBtnLarge, styles.saveBtn]} onPress={openSaveModal}>
+              <Feather name="download" size={18} color={C.white} />
+              <Text style={styles.actionBtnText}>Guardar en...</Text>
+            </TouchableOpacity>
+
+            {/* Reset */}
             <TouchableOpacity style={styles.iconBtn} onPress={reset}>
               <Feather name="refresh-cw" size={18} color={C.primary} />
             </TouchableOpacity>
@@ -279,12 +332,106 @@ export default function ConverterScreen() {
       <Text style={[styles.footer, { paddingBottom: insets.bottom + 68 }]}>
         Desarrollada por Javier Soto
       </Text>
+
+      {/* ── Save-to-Downloads modal ───────────────────────────────────── */}
+      <Modal
+        visible={showSaveModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSaveModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalCard}>
+            {/* Title */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconBox}>
+                <Feather name="download" size={22} color={C.primary} />
+              </View>
+              <Text style={styles.modalTitle}>Guardar en Descargas</Text>
+            </View>
+
+            <Text style={styles.modalSub}>
+              El PDF se guardará en la carpeta{" "}
+              <Text style={{ color: C.primaryLight }}>Descargas</Text> de tu
+              dispositivo con el nombre que elijas.
+            </Text>
+
+            {/* Filename input */}
+            <Text style={styles.inputLabel}>Nombre del archivo</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                value={fileName}
+                onChangeText={setFileName}
+                placeholder="mi-documento"
+                placeholderTextColor={C.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={saveToDownloads}
+              />
+              <Text style={styles.inputExt}>.pdf</Text>
+            </View>
+
+            {/* Result message */}
+            {saveState === "saved" && (
+              <View style={styles.resultRow}>
+                <Feather name="check-circle" size={14} color={C.success} />
+                <Text style={[styles.resultText, { color: C.success }]}>{saveMsg}</Text>
+              </View>
+            )}
+            {saveState === "error" && (
+              <View style={styles.resultRow}>
+                <Feather name="alert-circle" size={14} color={C.error} />
+                <Text style={[styles.resultText, { color: C.error }]}>{saveMsg}</Text>
+              </View>
+            )}
+
+            {/* Buttons */}
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowSaveModal(false)}
+              >
+                <Text style={styles.modalCancelText}>
+                  {saveState === "saved" ? "Cerrar" : "Cancelar"}
+                </Text>
+              </TouchableOpacity>
+
+              {saveState !== "saved" && (
+                <TouchableOpacity
+                  style={[
+                    styles.modalSaveBtn,
+                    (saveState === "saving" || !fileName.trim()) && { opacity: 0.5 },
+                  ]}
+                  onPress={saveToDownloads}
+                  disabled={saveState === "saving" || !fileName.trim()}
+                >
+                  {saveState === "saving" ? (
+                    <ActivityIndicator color={C.white} size="small" />
+                  ) : (
+                    <Feather name="save" size={16} color={C.white} />
+                  )}
+                  <Text style={styles.modalSaveText}>
+                    {saveState === "saving" ? "Guardando..." : "Guardar"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -296,132 +443,137 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: C.card,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: C.card, alignItems: "center", justifyContent: "center",
   },
   title: { fontSize: 18, fontWeight: "700", color: C.text },
   subtitle: { fontSize: 13, color: C.muted, marginTop: 1 },
+
   dropZone: {
-    flex: 1,
-    margin: 20,
-    borderWidth: 2,
-    borderColor: C.primary,
-    borderStyle: "dashed",
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.surface,
-    gap: 12,
+    flex: 1, margin: 20, borderWidth: 2, borderColor: C.primary,
+    borderStyle: "dashed", borderRadius: 20, alignItems: "center",
+    justifyContent: "center", backgroundColor: C.surface, gap: 12,
   },
   dropIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: C.card,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 80, height: 80, borderRadius: 24,
+    backgroundColor: C.card, alignItems: "center", justifyContent: "center",
   },
   dropTitle: { fontSize: 18, fontWeight: "600", color: C.text },
   dropSub: { fontSize: 13, color: C.muted },
   dropBtn: {
-    marginTop: 8,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    backgroundColor: C.primary,
-    borderRadius: 14,
+    marginTop: 8, paddingHorizontal: 28, paddingVertical: 12,
+    backgroundColor: C.primary, borderRadius: 14,
   },
   dropBtnText: { fontSize: 15, fontWeight: "600", color: C.white },
+
   list: { padding: 16, gap: 10 },
   imageCard: {
-    flexDirection: "row",
-    backgroundColor: C.card,
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: C.border,
+    flexDirection: "row", backgroundColor: C.card, borderRadius: 14,
+    overflow: "hidden", borderWidth: 1, borderColor: C.border,
   },
   thumb: { width: 80, height: 80, resizeMode: "cover" },
   cardInfo: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    justifyContent: "space-between",
+    flex: 1, paddingHorizontal: 14, paddingVertical: 12, justifyContent: "space-between",
   },
   cardPage: { fontSize: 14, fontWeight: "600", color: C.text },
   cardActions: { flexDirection: "row", gap: 8 },
   actionBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: C.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    width: 34, height: 34, borderRadius: 10,
+    backgroundColor: C.surface, alignItems: "center", justifyContent: "center",
   },
   actionBtnDim: { opacity: 0.35 },
   addMore: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    marginTop: 4,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 14, borderWidth: 1, borderColor: C.border,
+    borderStyle: "dashed", borderRadius: 12, marginTop: 4,
   },
   addMoreText: { fontSize: 14, color: C.primary },
+
   errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: C.error,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: 16, marginBottom: 8, padding: 12,
+    borderRadius: 10, backgroundColor: C.error,
   },
   successBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: C.success,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: 16, marginBottom: 8, padding: 12,
+    borderRadius: 10, backgroundColor: C.success,
   },
   bannerText: { fontSize: 13, color: C.white, flex: 1 },
+
   bottom: { paddingHorizontal: 16, paddingTop: 8 },
-  doneRow: { flexDirection: "row", gap: 10 },
+  doneRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+
+  actionBtnLarge: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 14, borderRadius: 14, gap: 7,
+  },
+  shareBtn: { backgroundColor: "#5b21b6" },
+  saveBtn: { backgroundColor: C.primary },
+  actionBtnText: { fontSize: 14, fontWeight: "700", color: C.white },
+
   mainBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
-    gap: 8,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, gap: 8,
   },
   mainBtnText: { fontSize: 16, fontWeight: "700", color: C.white },
+
   iconBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: C.card,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: C.border,
+    width: 48, height: 48, borderRadius: 14, backgroundColor: C.card,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: C.border,
   },
-  footer: {
-    textAlign: "center",
-    fontSize: 11,
-    color: C.muted,
-    paddingTop: 6,
+
+  footer: { textAlign: "center", fontSize: 11, color: C.muted, paddingTop: 6 },
+
+  // Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: C.overlay,
+    alignItems: "center", justifyContent: "center", padding: 24,
   },
+  modalCard: {
+    width: "100%", backgroundColor: C.surface, borderRadius: 24,
+    padding: 24, borderWidth: 1, borderColor: C.border,
+  },
+  modalHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  modalIconBox: {
+    width: 44, height: 44, borderRadius: 14,
+    backgroundColor: C.card, alignItems: "center", justifyContent: "center",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: C.text },
+  modalSub: { fontSize: 13, color: C.muted, lineHeight: 20, marginBottom: 20 },
+
+  inputLabel: { fontSize: 12, fontWeight: "600", color: C.muted, marginBottom: 8, letterSpacing: 0.5 },
+  inputRow: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: C.card, borderRadius: 12,
+    borderWidth: 1, borderColor: C.border, overflow: "hidden",
+    marginBottom: 16,
+  },
+  input: {
+    flex: 1, paddingHorizontal: 14, paddingVertical: 13,
+    color: C.text, fontSize: 15,
+  },
+  inputExt: {
+    paddingRight: 14, fontSize: 15, color: C.muted, fontWeight: "500",
+  },
+
+  resultRow: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    marginBottom: 16, paddingHorizontal: 2,
+  },
+  resultText: { fontSize: 13, flex: 1, lineHeight: 18 },
+
+  modalBtns: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
+  modalCancelBtn: {
+    paddingHorizontal: 18, paddingVertical: 12,
+    borderRadius: 12, backgroundColor: C.card,
+    borderWidth: 1, borderColor: C.border,
+  },
+  modalCancelText: { fontSize: 14, fontWeight: "600", color: C.muted },
+  modalSaveBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 7, paddingVertical: 12, borderRadius: 12, backgroundColor: C.primary,
+  },
+  modalSaveText: { fontSize: 14, fontWeight: "700", color: C.white },
 });
