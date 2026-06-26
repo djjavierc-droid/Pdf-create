@@ -9,7 +9,8 @@ SplashScreen.preventAutoHideAsync();
 
 function navigateToReader() {
   try {
-    router.navigate("/(tabs)/reader");
+    // replace so back-button from reader doesn't return to the not-found screen
+    router.replace("/(tabs)/reader");
   } catch {
     // router may not be ready yet — handled by the navState effect below
   }
